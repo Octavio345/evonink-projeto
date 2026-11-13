@@ -49,7 +49,7 @@ export default function App() {
   }, [])
   useEffect(() => { if(connected) refresh().catch(e => { if(e instanceof ApiError && e.status===401){setPasswordRequired(true);setConnectionError(e.message);setConnected(false)}else if(isLocalFrontend())setNotice({text:e.message,type:'error'});else {setConnectionError(e.message);setConnected(false)} }) },[connected])
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(null),6000);return () => clearTimeout(timer) } },[notice])
-  const run = async (task:()=>Promise<unknown>, success?:string) => { setBusy(true);try { await task();await refresh();if(success)setNotice({text:success,type:'success'}) } catch(e) {setNotice({text:e instanceof Error?e.message:'Falha inesperada',type:'error'})} finally {setBusy(false)} }
+  const run = async (task:()=>Promise<unknown>, success?:string):Promise<boolean> => { setBusy(true);try { await task();await refresh();if(success)setNotice({text:success,type:'success'});return true } catch(e) {setNotice({text:e instanceof Error?e.message:'Falha inesperada',type:'error'});return false} finally {setBusy(false)} }
   const go = (target:Page,id?:string) => {setPage(target);setSelectedId(id || null);setSidebarOpen(false);window.scrollTo({top:0,behavior:'smooth'})}
   const activeWorkbook = workbooks.find(w=>w.active===1)
   const workOptions = Array.from(new Set([...layout.regions.filter(r=>r.field==='work_types').map(r=>r.option).filter((x):x is string=>Boolean(x)),...documents.flatMap(d=>Array.isArray(d.fields.work_types?.value)?d.fields.work_types.value as string[]:[])]))
@@ -89,22 +89,43 @@ function DashboardPage({data,documents,go,workOptions}:{data:Dashboard|null;docu
   </>
 }
 
-function UploadPage({documents,run,go,busy,layout}:{documents:Document[];run:(fn:()=>Promise<unknown>,success?:string)=>Promise<void>;go:(p:Page,id?:string)=>void;busy:boolean;layout:Layout}) {
+function UploadPage({documents,run,go,busy,layout}:{documents:Document[];run:(fn:()=>Promise<unknown>,success?:string)=>Promise<boolean>;go:(p:Page,id?:string)=>void;busy:boolean;layout:Layout}) {
   const [front,setFront]=useState<FileList|null>(null)
   const [back,setBack]=useState<File|null>(null)
   const [pair,setPair]=useState(false)
+  const [stage,setStage]=useState('')
+  const [preview,setPreview]=useState('')
+  const selected=front?.[0]
+  useEffect(()=>{if(!selected){setPreview('');return}const url=URL.createObjectURL(selected);setPreview(url);return()=>URL.revokeObjectURL(url)},[selected])
   const upload=async()=>{
     if(!front?.length)return
-    await run(async()=>{for(const file of Array.from(front)){const form=new FormData();form.append('front',file);if(pair&&back)form.append('back',back);const item=await api<Document>('/documents',{method:'POST',body:form});if(!['validated','exported'].includes(item.status)){const processed=await api<Document>(`/documents/${item.id}/process`,{method:'POST'});if(processed.status==='error')throw new Error(processed.error||'Falha ao processar documento')}}setFront(null);setBack(null)},`${front.length} documento(s) enviado(s) para revisão`)
+    let lastId=''
+    const count=front.length
+    const completed=await run(async()=>{
+      for(const [index,file] of Array.from(front).entries()){
+        setStage(`Enviando ${index+1} de ${count}: ${file.name}`)
+        const form=new FormData();form.append('front',file);if(pair&&back)form.append('back',back)
+        const item=await api<Document>('/documents',{method:'POST',body:form})
+        lastId=item.id
+        if(!['validated','exported'].includes(item.status)){
+          setStage(`Lendo ${file.name}. Isso pode levar alguns minutos no Space gratuito...`)
+          const processed=await api<Document>(`/documents/${item.id}/process`,{method:'POST'})
+          if(processed.status==='error')throw new Error(processed.error||'Falha ao processar documento')
+        }
+      }
+      setStage('Leitura concluída. Abrindo a revisão...')
+      setFront(null);setBack(null)
+    },`${count} documento(s) pronto(s) para revisão`)
+    setStage('')
+    if(completed&&lastId)go('review',lastId)
   }
-  return <><SectionHead eyebrow="ENTRADA DE DOCUMENTOS" title="Digitalizar PTs" description="Envie formulários digitalizados para leitura dos campos autorizados."/>
-    {!layout.regions.length&&<div className="callout"><CircleAlert size={20}/><div><strong>Modelo ainda não calibrado</strong><span>Configure as regiões destacadas no formulário real antes de esperar extração automática. Os documentos serão recebidos e poderão ser revisados manualmente.</span></div><button onClick={()=>go('settings')}>Configurar <ArrowRight size={15}/></button></div>}
-    <div className="upload-grid"><div className="panel upload-panel"><div className="panel-title"><div><h2>Enviar documentos</h2><p>PDF, JPG ou PNG · até 25 MB por arquivo</p></div></div><label className="dropzone"><UploadCloud size={34}/><strong>{front?.length?`${front.length} arquivo(s) selecionado(s)`:'Selecione as PTs digitalizadas'}</strong><span>Arraste arquivos ou clique para escolher</span><input type="file" accept=".pdf,.png,.jpg,.jpeg" multiple={!pair} onChange={e=>setFront(e.target.files)}/></label><label className="check-row"><input type="checkbox" checked={pair} onChange={e=>{setPair(e.target.checked);setFront(null);setBack(null)}}/>Associar frente e verso como um único documento</label>{pair&&<label className="secondary-file">Verso da PT<input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setBack(e.target.files?.[0]||null)}/><span>{back?.name||'Escolher arquivo'}</span></label>}<button className="primary-button full" disabled={!front?.length||busy||(pair&&!back)} onClick={upload}>{busy?'Processando...':'Enviar e processar'}<ArrowRight size={17}/></button></div><div className="panel process-panel"><span className="eyebrow">COMO FUNCIONA</span><h2>Do papel aos dados confiáveis.</h2><div className="steps"><div><b>01</b><span><strong>Digitalização</strong><small>Envie a frente e, quando houver, o verso da PT.</small></span></div><div><b>02</b><span><strong>Leitura localizada</strong><small>Somente as regiões configuradas são analisadas.</small></span></div><div><b>03</b><span><strong>Conferência humana</strong><small>Revise campos incertos e confirme os dados.</small></span></div><div><b>04</b><span><strong>Exportação segura</strong><small>Adicione registros a uma cópia do Excel existente.</small></span></div></div></div></div>
+  return <><SectionHead eyebrow="ENTRADA DE DOCUMENTOS" title="Digitalizar PTs" description="Escolha o arquivo, confira a prévia e envie para leitura."/>
+    {!layout.regions.length&&<div className="callout"><CircleAlert size={20}/><div><strong>Modelo de leitura</strong><span>O formulário Evonik do exemplo recebe uma configuração inicial automática. Para outros formulários, ajuste as regiões em Configurações.</span></div><button onClick={()=>go('settings')}>Configurar <ArrowRight size={15}/></button></div>}
+    <div className="upload-grid"><div className="panel upload-panel"><div className="panel-title"><div><h2>Enviar documentos</h2><p>PDF, JPG ou PNG · até 25 MB por arquivo</p></div></div><label className="dropzone"><UploadCloud size={34}/><strong>{front?.length?`${front.length} arquivo(s) selecionado(s)`:'Selecione as PTs digitalizadas'}</strong><span>Clique para escolher</span><input type="file" accept=".pdf,.png,.jpg,.jpeg" multiple={!pair} onChange={e=>{setFront(e.target.files);setStage('')}}/></label><label className="check-row"><input type="checkbox" checked={pair} onChange={e=>{setPair(e.target.checked);setFront(null);setBack(null);setStage('')}}/>Associar frente e verso como um único documento</label>{pair&&<label className="secondary-file">Verso da PT<input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setBack(e.target.files?.[0]||null)}/><span>{back?.name||'Escolher arquivo'}</span></label>}{stage&&<div className="upload-stage" role="status"><span className="upload-spinner"/>{stage}</div>}<button className="primary-button full" disabled={!front?.length||busy||(pair&&!back)} onClick={upload}>{busy?'Aguarde a leitura...':'Enviar e abrir revisão'}<ArrowRight size={17}/></button></div><div className="panel upload-preview-panel"><div className="panel-title"><div><h2>Prévia do arquivo</h2><p>{selected?selected.name:'Confira o documento antes de enviar'}</p></div></div>{preview&&selected?(selected.type==='application/pdf'||selected.name.toLowerCase().endsWith('.pdf')?<iframe src={preview} title={`Prévia de ${selected.name}`}/>:<img src={preview} alt={`Prévia de ${selected.name}`}/>):<div className="upload-preview-empty"><FileText size={34}/><span>Selecione um PDF ou imagem para ver a prévia aqui.</span></div>}</div></div>
     <div className="panel table-panel"><div className="panel-title"><div><h2>Últimos envios</h2><p>Acompanhe o estado dos documentos</p></div></div>{documents.length?<div className="table-wrap"><table><thead><tr><th>Documento</th><th>Enviado em</th><th>Status</th><th></th></tr></thead><tbody>{documents.slice(0,8).map(d=><tr key={d.id}><td><span className="table-name"><FileText size={17}/>{d.filename}</span></td><td>{date(d.created_at)}</td><td><Badge status={d.status}/></td><td><button className="text-button" onClick={()=>go('review',d.id)}>Abrir <ArrowRight size={14}/></button></td></tr>)}</tbody></table></div>:<Empty icon={FileText} title="Nenhum documento enviado" description="Os formulários enviados aparecerão aqui com o estado do processamento."/>}</div>
   </>
 }
-
-function ReviewPage({documents,selectedId,run,busy,go,workOptions}:{documents:Document[];selectedId:string|null;run:(fn:()=>Promise<unknown>,success?:string)=>Promise<void>;busy:boolean;go:(p:Page,id?:string)=>void;workOptions:string[]}) {
+function ReviewPage({documents,selectedId,run,busy,go,workOptions}:{documents:Document[];selectedId:string|null;run:(fn:()=>Promise<unknown>,success?:string)=>Promise<boolean>;busy:boolean;go:(p:Page,id?:string)=>void;workOptions:string[]}) {
   const candidates=documents.filter(d=>['review','validated','exported','error','waiting'].includes(d.status))
   const [id,setId]=useState<string|null>(selectedId||candidates.find(d=>d.status==='review')?.id||null)
   const [activeField,setActiveField]=useState('opening_date')
@@ -132,7 +153,7 @@ function HistoryPage({documents,go}:{documents:Document[];go:(p:Page,id?:string)
   return <><SectionHead eyebrow="RASTREABILIDADE" title="Histórico" description="Consulte documentos, revisões e estados de exportação."/><div className="panel"><div className="history-controls"><div className="search-box"><Search size={18}/><input placeholder="Buscar documento, ordem, área..." value={query} onChange={e=>setQuery(e.target.value)}/></div><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Todos os status</option>{Object.entries(statusLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>{filtered.length?<div className="table-wrap"><table><thead><tr><th>Documento</th><th>Ordem de serviço</th><th>Área</th><th>Data</th><th>Status</th><th></th></tr></thead><tbody>{filtered.map(d=><tr key={d.id}><td><span className="table-name"><FileText size={17}/>{d.filename}</span></td><td>{String(d.fields.service_order?.value||'—')}</td><td>{String(d.fields.area?.value||'—')}</td><td>{date(d.created_at)}</td><td><Badge status={d.status}/></td><td><button className="text-button" onClick={()=>go('review',d.id)}>Detalhes <ArrowRight size={14}/></button></td></tr>)}</tbody></table></div>:<Empty icon={FolderOpen} title="Nenhum resultado" description="Ajuste os filtros ou envie a primeira PT para começar o histórico."/>}</div></>
 }
 
-function ExcelPage({workbook,exports,documents,run,busy}:{workbook:Workbook|undefined;exports:Export[];documents:Document[];run:(fn:()=>Promise<unknown>,success?:string)=>Promise<void>;busy:boolean}) {
+function ExcelPage({workbook,exports,documents,run,busy}:{workbook:Workbook|undefined;exports:Export[];documents:Document[];run:(fn:()=>Promise<unknown>,success?:string)=>Promise<boolean>;busy:boolean}) {
   const [sheets,setSheets]=useState<Sheet[]>([])
   const [sheet,setSheet]=useState('')
   const [headerRow,setHeaderRow]=useState(1)
@@ -155,7 +176,7 @@ function ExcelPage({workbook,exports,documents,run,busy}:{workbook:Workbook|unde
   </>
 }
 
-function SettingsPage({layout,documents,run,busy}:{layout:Layout;documents:Document[];run:(fn:()=>Promise<unknown>,success?:string)=>Promise<void>;busy:boolean}) {
+function SettingsPage({layout,documents,run,busy}:{layout:Layout;documents:Document[];run:(fn:()=>Promise<unknown>,success?:string)=>Promise<boolean>;busy:boolean}) {
   const [name,setName]=useState(layout.name)
   const [ocrProvider,setOcrProvider]=useState<'rapidocr'|'tesseract'>(layout.ocr_provider||'rapidocr')
   const [regions,setRegions]=useState<Region[]>(layout.regions)
