@@ -11,8 +11,7 @@ export const labels: Record<string,string> = {opening_date:'Data de abertura',ex
 export const statusLabels: Record<string,string> = {waiting:'Aguardando',processing:'Processando',review:'Aguardando revisão',validated:'Validado',exported:'Exportado',error:'Erro'}
 const localFrontend = ['localhost','127.0.0.1'].includes(window.location.hostname)
 const defaultApiOrigin = 'https://octaviorezendesilva-evonik-hacktoon.hf.space'
-const apiStorageKey = 'apex-api-origin-v2'
-let apiOrigin = localFrontend ? '' : localStorage.getItem(apiStorageKey) || defaultApiOrigin
+let apiOrigin = localFrontend ? '' : defaultApiOrigin
 let authorization = ''
 
 export class ApiError extends Error {
@@ -20,24 +19,15 @@ export class ApiError extends Error {
 }
 
 export const isLocalFrontend = () => localFrontend
-export const isApiReady = () => localFrontend || Boolean(apiOrigin)
-export const savedApiOrigin = () => apiOrigin || defaultApiOrigin
+export const isApiReady = () => true
 
-export function configureApi(url: string, password = '') {
-  const parsed = new URL(url.trim())
-  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost','127.0.0.1'].includes(parsed.hostname))) {
-    throw new Error('Use a URL HTTPS direta do Space, terminada em .hf.space')
-  }
-  if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
-    throw new Error('Informe somente a origem da API, por exemplo https://usuario-apex.hf.space')
-  }
-  apiOrigin = parsed.origin
+export function configureApi(password = '') {
+  apiOrigin = localFrontend ? '' : defaultApiOrigin
   const credentials = new TextEncoder().encode(`apex:${password}`)
   authorization = password ? `Basic ${btoa(String.fromCharCode(...credentials))}` : ''
-  localStorage.setItem(apiStorageKey, apiOrigin)
 }
 
-export function disconnectApi() { apiOrigin = ''; authorization = ''; localStorage.removeItem(apiStorageKey) }
+export function disconnectApi() { authorization = '' }
 
 async function request(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers)
@@ -45,7 +35,7 @@ async function request(path: string, options: RequestInit = {}) {
   try {
     return await fetch(`${apiOrigin}/api${path}`, {...options, headers})
   } catch {
-    throw new Error('API inacessível. Confira a URL direta do Space e se ele já terminou de iniciar.')
+    throw new Error('API indisponível. Aguarde o Space iniciar e tente novamente.')
   }
 }
 
