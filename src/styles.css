@@ -21,3 +21,6 @@
 .upload-spinner{width:16px;height:16px;flex:none;border:2px solid #dab1c5;border-top-color:#82194d;border-radius:50%;animation:upload-spin .8s linear infinite}
 @keyframes upload-spin{to{transform:rotate(360deg)}}
 @media(max-width:760px){.upload-preview-panel iframe,.upload-preview-panel img{height:340px}}
+.sample-reference{background:#eef6f3;border-color:#cfe7dc;color:#366e59}
+.read-state.reference{color:#366e59}
+.read-state.illegible{color:#a36500}
