@@ -1,7 +1,7 @@
 export type Field = { value: string | string[] | boolean | null; raw: string | null; confidence: number | null; state: string; regions: RegionRef[]; manual?: boolean }
 export type RegionRef = { page: number; x: number; y: number; w: number; h: number; option?: string; detected?: string }
 export type Region = RegionRef & { field: string; kind: 'text' | 'checkbox'; option?: string }
-export type Document = { id: string; filename: string; status: string; created_at: string; reviewed_at: string | null; exported_at: string | null; processing_ms: number | null; pages: {index:number;width:number;height:number}[]; fields: Record<string, Field>; issues: string[]; error: string | null; correction_count: number; file_available?: boolean; recognition_mode?: 'sample_reference'|'ocr' }
+export type Document = { id: string; filename: string; status: string; created_at: string; reviewed_at: string | null; exported_at: string | null; processing_ms: number | null; pages: {index:number;width:number;height:number}[]; fields: Record<string, Field>; issues: string[]; error: string | null; correction_count: number; file_available?: boolean; recognition_mode?: 'sample_reference'|'ocr'; reused?: boolean }
 export type Workbook = { id: string; filename: string; sheet: string | null; header_row: number | null; mapping: Record<string,string>; active: number; created_at: string }
 export type Sheet = { name: string; rows: number; columns: number; header_candidates: {row:number;cells:{column:number;letter:string;value:string}[]}[] }
 export type Export = { id: string; workbook_id: string; created_at: string; count: number; document_ids: string[] }
