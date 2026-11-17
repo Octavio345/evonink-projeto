@@ -24,3 +24,10 @@
 .sample-reference{background:#eef6f3;border-color:#cfe7dc;color:#366e59}
 .read-state.reference{color:#366e59}
 .read-state.illegible{color:#a36500}
+.review-toolbar{flex-wrap:wrap}
+.danger-button{border-color:#d8a7a9;color:#a33842}
+.danger-button:hover:not(:disabled){background:#fff5f5}
+.history-actions{display:flex;align-items:center;justify-content:flex-end;gap:13px}
+.delete-link{color:#a33842}
+.mapping-details summary{cursor:pointer;color:#82194d;font-size:12px;font-weight:800}
+.mapping-details>.text-button{margin:14px 0 18px}
