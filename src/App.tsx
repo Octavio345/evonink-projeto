@@ -148,7 +148,10 @@ function ReviewPage({documents,selectedId,run,busy,go,workOptions}:{documents:Do
   const [values,setValues]=useState<Record<string,string|string[]|boolean|null>>({})
   useEffect(()=>{if(selectedId)setId(selectedId)},[selectedId])
   const document=documents.find(d=>d.id===id)
-  const reviewFields=fields.filter(key=>key==='permit_number'||document?.fields[key]?.manual!==false)
+  const reviewFields=fields.filter(key=>{
+    const field=document?.fields[key]
+    return ['permit_number','opening_date','service_order','area'].includes(key)||field?.manual!==false||Boolean(field?.raw&&!['unchecked','ambiguous'].includes(field.raw))
+  })
   useEffect(()=>{let active=true;let created='';setImageUrl('');if(document&&document.file_available!==false)pageImageUrl(document.id,page).then(url=>{if(active){created=url;setImageUrl(url)}else URL.revokeObjectURL(url)}).catch(()=>{});return()=>{active=false;if(created)URL.revokeObjectURL(created)}},[document?.id,document?.file_available,page])
   useEffect(()=>{if(document){setValues(Object.fromEntries(fields.map(k=>[k,document.fields[k]?.value??(k==='work_types'?[]:null)])));setPage(0);setActiveField('opening_date')}},[document?.id,document?.fields])
   useEffect(()=>setMobileView('fields'),[document?.id])
